@@ -1,0 +1,74 @@
+apiVersion: core.oam.dev/v1beta1
+kind: TraitDefinition
+metadata:
+  annotations:
+    definition.oam.dev/description: "VirtualService trait w/ url rewrite"
+  name: gateway-vs-url-rewrite
+spec:
+  appliesToWorkloads:
+    - webservice
+  schematic:
+    cue:
+      template: |
+        outputs: service: {
+          apiVersion: "v1"
+          kind:       "Service"
+          metadata: name: context.name
+          spec: {
+            selector: "app.oam.dev/component": context.name
+            ports: [
+              for k, v in parameter.http {
+                port:       v
+                targetPort: v
+              },
+            ]
+          }
+        }
+
+        outputs: virtualService: {
+          apiVersion: "networking.istio.io/v1beta1"
+          kind: "VirtualService"
+          metadata: name: context.name
+          spec: {
+            gateways: [
+              "istio-system/cluster-ingressgateway"
+            ]
+            hosts: [
+              parameter.domain
+            ]
+            http: [
+              {
+                match: [{
+                  uri: exact: "/"+context.name
+                }]
+                redirect: uri: "/"+context.name+"/"
+              },
+              {
+                match: [{
+                  uri: prefix: "/"+context.name+"/"
+                }]
+                rewrite: {
+                  uri: "/"+parameter.rewritePath+"/"
+                }
+                route: [{
+                  destination:{
+                    host: context.name
+                    port: number: 8080
+                  }
+                }]
+              }
+            ]
+          }
+        }
+        
+        parameter: {
+          // +usage=Specify the domain you want to expose
+          domain: string
+
+          // +usage=Specify the mapping relationship between the http path and the workload port
+          http: [string]: int
+
+          // +usage=url for rewrite
+          rewritePath?: string
+        }
+

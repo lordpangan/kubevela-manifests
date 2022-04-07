@@ -1,0 +1,62 @@
+apiVersion: core.oam.dev/v1beta1
+kind: TraitDefinition
+metadata:
+  annotations:
+    definition.oam.dev/description: "VirtualService trait"
+  name: gateway-vs
+spec:
+  appliesToWorkloads:
+    - webservice
+  schematic:
+    cue:
+      template: |
+        outputs: service: {
+          apiVersion: "v1"
+          kind:       "Service"
+          metadata: name: context.name
+          spec: {
+            selector: "app.oam.dev/component": context.name
+            ports: [
+              for k, v in parameter.http {
+                port:       v
+                targetPort: v
+              },
+            ]
+          }
+        }
+
+        outputs: virtualService: {
+          apiVersion: "networking.istio.io/v1beta1"
+          kind: "VirtualService"
+          metadata: name: context.name
+          spec: {
+            gateways: [
+              "istio-system/cluster-ingressgateway"
+            ]
+            hosts: [
+              parameter.domain
+            ]
+            http: [{
+              for k, v in parameter.http {
+                match: [{
+                  uri: prefix: k
+                }]
+                route: [{
+                  destination:{
+                    host: context.name
+                    port: number: v
+                  }
+                }]
+              }
+            }]
+          }
+        }
+        
+        parameter: {
+          // +usage=Specify the domain you want to expose
+          domain: string
+
+          // +usage=Specify the mapping relationship between the http path and the workload port
+          http: [string]: int
+        }
+
